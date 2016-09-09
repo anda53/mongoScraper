@@ -6,7 +6,8 @@ var cheerio = require("cheerio");
 var handlebars = require("express-handlebars");
 var mongoose = require("mongoose");
 var request = require("request");
-var mongojs = require('mongojs');
+var logger = require('morgan');
+
 
 
 
@@ -15,6 +16,8 @@ var mongojs = require('mongojs');
 app.use(bodyParser.urlencoded({
     extended: false
 }));
+app.use(logger('dev'));
+
 
 app.use(express.static('public'));
 
@@ -33,66 +36,106 @@ db.on('error', function(err) {
 db.once('open', function() {
   console.log('Mongoose connection successful.');
 });
-var databaseUrl = "scraper";
-var collections = ["scrapedData"];
 
-// ========== DATABASE ==============
-var db = mongojs('techInsider', ['articles']);
 
-db.on('error', function(err) {
-    console.log('Database Error:', err);
-});
-console.log(db);
 //==========Imports=========================
 // Import Note and Article models
-// var Comment = require('./models/Comment.js');
-// var Article = require('./models/Article.js');
+var Comment = require('./models/comment.js');
+var Article = require('./models/article.js');
 
 //============Routes==========================
 
 
-// Root Route
+// ===========Root Route
 app.get('/', function(req, res) {
     // send the articles from db to browser (as json)
 
      res.send(index.html);
 
     // db.articles.find(function(err, docs) {
-    //     res.json(docs);
+    //     res.render(docs);
     // })
 });
 
-//Articles Route will show all articles
 
-app.get('/articles', function(req,res){
+//=============Articles Route will show all articles
+
+app.get('/scrape', function(req,res){
 
 		request("http://www.techinsider.io" , function(error, response, html){
 
 			if (error) {
 			throw error;
-	}
-				// var $ = cheerio.load(html);
+			}
+			
+			var $ = cheerio.load(html);
 
 
-	    $('a.title').each(function(i, element) {
-	    		var results = [];
+	    	$('a.title').each(function(i, element) {
+	    		var results ={};
 
     		results.title = $(this).text();
 			results.link = $(this).attr('href');
+			// results.article = $(this).text();
 
-				results.push({
-			title: results.title,
-			link: results.link
+			var newArticle = new Article (results);
+
+				newArticle.save(function(err,doc){
+					if(err){
+						console.log(err);
+					}
+					else{
+						console.log(doc);
+					}
+
+				
+				});
 			});
-
-			
-		console.log('Here are your results:', results);
-		
-		})
-	    	console.log("this is the console frigging log");
-	})
+	    	res.send("Scrape Complete");
+		});
 				
 })
+
+//=======retrieiving the articles from DB===========
+
+app.get('/articles', function(req, res){
+	Article.find({}, function(err,doc){
+		if (err){
+			console.log(err);
+		}
+		else{
+//send the results back as json object
+			res.json(doc);
+		}
+	});
+
+});
+
+app.post("/articles/:id", function(req,res){
+		var newComment= new Comment(req.body);
+
+		newComment.save(function(err,doc){
+
+			if(err){
+				console.log(err);
+			}
+			else{
+			//find the comment via id param in DB and update it to show only recently made one
+			Article.findOneAndUpdate({'_id': req.params.id}, {'comment': doc._id})
+			
+				.exec(function(err,doc){
+					if(err){
+						console.log(err);
+					} else{
+						res.send(doc);
+					}
+				});
+			}
+		});
+
+});
+
+
 
 
 
@@ -108,3 +151,13 @@ app.get('/articles', function(req,res){
 app.listen(3000, function() {
   console.log('App running on port 3000!');
 });
+
+
+
+
+
+
+
+
+
+
